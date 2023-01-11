@@ -120,4 +120,4 @@ class FineTunedESM(pl.LightningModule):
         x = torch.as_tensor(x)
         if torch.cuda.is_available():
           x = x.cuda()
-        return self(x)
+        return self(x).detach()

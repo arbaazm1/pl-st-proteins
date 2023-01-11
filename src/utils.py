@@ -3,6 +3,7 @@ from esm import FastaBatchedDataset
 import numpy as np
 import os
 import pandas as pd
+import pytorch_lightning as pl
 from scipy.stats import spearmanr
 from sklearn.metrics import ndcg_score
 from sklearn.utils import shuffle
@@ -29,6 +30,12 @@ class CSVBatchedDataset(FastaBatchedDataset):
     @classmethod
     def from_dataframe(cls, df):
         return cls(df.log_fitness.values, df.seq.values)
+
+    def __getitem__(self, idx):
+        if isinstance(idx, int):
+            return super().__getitem__(idx)
+        elif isinstance(idx, list):
+            return super().__getitem__(idx[0])
 
 def spearman(y_pred, y_true):
     if np.var(y_pred) < 1e-6 or np.var(y_true) < 1e-6:
@@ -108,3 +115,19 @@ def get_preds(model, data_loader):
             y_pred = torch.cat((y_pred, predictions))
             
     return torch.flatten(y_pred)
+
+def get_pl_preds(model, df, batch_converter, batch_size):
+    from InferDataModule import InferDataModule
+
+    if batch_size is None:
+        infer_data_module = InferDataModule(df, batch_converter, 512) 
+        pl_predictor = pl.Trainer(devices=1,
+                            accelerator="gpu",
+                            auto_scale_batch_size="binsearch")
+        pl_predictor.tune(model, datamodule=infer_data_module)
+    else:
+        infer_data_module = InferDataModule(df, batch_converter, batch_size) 
+        pl_predictor = pl.Trainer(devices=1,
+                            accelerator="gpu")
+
+    return torch.cat(pl_predictor.predict(model, datamodule=infer_data_module)), infer_data_module.batch_size

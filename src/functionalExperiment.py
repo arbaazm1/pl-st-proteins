@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from AssayDataModule import AssayDataModule
 from FineTunedESM import FineTunedESM
-from utils import create_msa_df, df_to_dataloader, get_preds, train_val_test_split
+from utils import create_msa_df, df_to_dataloader, get_pl_preds, train_val_test_split
 
 def update_metrics_dict(metrics_dict,
                         res_dict,
@@ -70,9 +70,7 @@ def run_baseline_experiment(dataset_name,
     baseline_val_res = baseline_trainer.validate(baseline_model, datamodule=baseline_dataloader)[0]
     baseline_test_res = baseline_trainer.test(baseline_model, datamodule=baseline_dataloader)[0]
 
-    train_dataloader = df_to_dataloader(train_df, baseline_dataloader.batch_size, baseline_model.batch_converter)
-
-    baseline_train_preds = get_preds(baseline_model, train_dataloader).detach()
+    baseline_train_preds = torch.cat(baseline_trainer.predict(baseline_model, datamodule=baseline_dataloader))
 
     return {"baseline_model": baseline_model,
             "global_batch_size": baseline_dataloader.batch_size,
@@ -88,7 +86,7 @@ def run_baseline_experiment(dataset_name,
 def get_best_st_model_metrics(model_path, dataset_name, baseline_dataloader, train_dataloader, output_dir):
     best_model = FineTunedESM(model_path,
                                 dataset_name,
-                                3e-5)
+                                None)
     state = torch.load(os.path.join(output_dir, 'early_stopped_st_model_data.pt'))
     best_model.load_state_dict(state)
 
@@ -96,7 +94,7 @@ def get_best_st_model_metrics(model_path, dataset_name, baseline_dataloader, tra
     best_st_model_val_res = best_st_model_trainer.validate(best_model, datamodule=baseline_dataloader)[0]
     best_st_model_test_res = best_st_model_trainer.test(best_model, datamodule=baseline_dataloader)[0]
 
-    best_st_model_train_preds = get_preds(best_model, train_dataloader).detach()
+    best_st_model_train_preds = torch.cat(best_st_model_trainer.predict(best_model, datamodule=baseline_dataloader))
 
     return {"val_res": best_st_model_val_res,
             "test_res": best_st_model_test_res,
@@ -181,12 +179,18 @@ def run_experiment(
     teacher_model = baseline_experiment_res.pop("baseline_model")
     assert len(baseline_experiment_res) == 0
 
+    eval_batch_size = None
     ###SELF TRAINING LOOP#
     for st_iter in tqdm(range(num_self_train_iters)):
         #Get teacher_model pseudolabels for MSA sequences
         msa_df = pd.read_csv(os.path.join(output_dir, 'msa_data.csv'))
         msa_dataloader = df_to_dataloader(msa_df, global_batch_size, global_batch_converter)
-        pseudolabels = get_preds(teacher_model, msa_dataloader).detach()
+        if eval_batch_size is None:
+            pseudolabels, eval_batch_size = get_pl_preds(teacher_model, msa_df, 
+                                                        global_batch_converter, eval_batch_size)
+        else:
+            pseudolabels, _ = get_pl_preds(teacher_model, msa_df, 
+                                        global_batch_converter, eval_batch_size)
         msa_df['log_fitness'] = pseudolabels.cpu().numpy()
         #Concat pseudolabels with actual labels
         combined_labelled_df = pd.concat([msa_df[["seq", "log_fitness"]], train_df[["seq", "log_fitness"]]])
@@ -203,7 +207,7 @@ def run_experiment(
                         val_dataloaders=val_dataloader)
        
         #Log train, val Spearmen + MSE for student
-        train_preds = get_preds(student_model, train_dataloader).detach()
+        train_preds = torch.cat(st_trainer.predict(student_model, datamodule=baseline_dataloader))
   
         if torch.cuda.is_available():
           train_actual = train_actual.cuda()

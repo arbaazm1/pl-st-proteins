@@ -14,12 +14,14 @@ class InferDataModule(LightningDataModule):
         self.batch_size = batch_size
 
     def setup(self, stage):
-        if stage == "predict":
-            self.dataset = CSVBatchedDataset.from_dataframe(self.df)
-            self.batches = self.dataset.get_batch_indices(self.batch_size, extra_toks_per_seq=1)
-        else:
-            raise ValueError("This data module is only meant to be used with the predict method")
+        
+        self.dataset = CSVBatchedDataset.from_dataframe(self.df)
+        self.batches = self.dataset.get_batch_indices(self.batch_size, extra_toks_per_seq=1)
+
+    def train_dataloader(self):
+        return DataLoader(self.dataset,
+            collate_fn=self.batch_converter, batch_sampler=BatchSampler(self.batches, self.batch_size, drop_last=False))
 
     def predict_dataloader(self):
-        return DataLoader(self.train_dataset,
+        return DataLoader(self.dataset,
             collate_fn=self.batch_converter, batch_sampler=BatchSampler(self.batches, self.batch_size, drop_last=False))
