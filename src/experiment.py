@@ -124,9 +124,9 @@ def run_experiment(
         #Log train, val Spearmen + MSE for student
         train_preds = torch.cat(st_trainer.predict(student_model, datamodule=baseline_datamodule))
   
-        if torch.cuda.is_available():
-          train_actual = train_actual.cuda()
-          train_preds = train_preds.cuda()
+        # if torch.cuda.is_available():
+        #   train_actual = train_actual.cuda()
+        #   train_preds = train_preds.cuda()
         
         train_mse.append(mse_criterion(train_preds, train_actual))
         train_spearman.append(spearman_coef(train_preds, train_actual))
@@ -163,8 +163,8 @@ def run_experiment(
 
     best_st_model_train_preds = torch.cat(best_st_model_trainer.predict(best_model, datamodule=baseline_datamodule))
 
-    res_dict["st_train_mse"] = mse_criterion(best_st_model_train_preds, train_actual)
-    res_dict["st_train_spearman"] = spearman_coef(best_st_model_train_preds, train_actual)
+    res_dict["st_train_mse"] = mse_criterion(best_st_model_train_preds, train_actual).item()
+    res_dict["st_train_spearman"] = spearman_coef(best_st_model_train_preds, train_actual).item()
 
     for k, v in best_st_model_val_res.items():
         res_dict[f"st_{k}"] = v
