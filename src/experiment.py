@@ -36,8 +36,7 @@ def run_experiment(
     
     baseline_model = FineTunedESM(model_path, dataset_name, initial_lr)
     checkpoint_callback = ModelCheckpoint(monitor='val_spearman', mode='max', dirpath=baseline_folder, filename="baseline_model")
-    baseline_trainer = pl.Trainer(devices=1,
-                        accelerator="gpu",
+    baseline_trainer = pl.Trainer(accelerator="auto",
                         auto_lr_find=True,
                         auto_scale_batch_size="binsearch",
                         max_epochs=finetune_epochs,
@@ -114,8 +113,7 @@ def run_experiment(
         #Place concatenated result in scratch folder
 
         st_callback = ModelCheckpoint(monitor='val_spearman', mode='max')
-        st_trainer = pl.Trainer(devices=1,
-                        accelerator="gpu",
+        st_trainer = pl.Trainer(accelerator="auto",
                         max_epochs=finetune_epochs,
                         callbacks=[st_callback])
         student_model = FineTunedESM(model_path, dataset_name, baseline_model.learning_rate)
@@ -159,7 +157,7 @@ def run_experiment(
     state = torch.load(os.path.join(output_dir, 'early_stopped_st_model_data.pt'))
     best_model.load_state_dict(state)
 
-    best_st_model_trainer = pl.Trainer(devices=1, accelerator="gpu")
+    best_st_model_trainer = pl.Trainer(accelerator="auto")
     best_st_model_val_res = best_st_model_trainer.validate(best_model, datamodule=baseline_datamodule)[0]
     best_st_model_test_res = best_st_model_trainer.test(best_model, datamodule=baseline_datamodule)[0]
 
